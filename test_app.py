@@ -1,53 +1,40 @@
 import pytest
 import json
-from app import app, db 
+import base64
+import hmac
+import hashlib
 
-@pytest.fixture
-def client():
-    with app.test_client() as client:
-        with app.app_context():
-            db.create_all()
-        yield client
+from app import access_token, header_encoded, payload_encoded, signature_encoded, jwt
 
-@pytest.fixture
-def auth_token(client):
+def test_access_token():
+    data = b'test'
+    expected = 'dGVzdA'
+    assert access_token(data) == expected
 
-    response = client.post('/register', json={'username': 'testuser', 'password': 'testpassword'})
-    assert response.status_code == 201
+def test_header_encoding():
+    header = {
+        "alg": "HS256",
+        "typ": "JWT"
+    }
+    expected_header = base64.urlsafe_b64encode(json.dumps(header).encode('utf-8')).rstrip(b'=').decode('utf-8')
+    assert header_encoded == expected_header
 
-    
-    response = client.post('/login', json={'username': 'testuser', 'password': 'testpassword'})
-    assert response.status_code == 200
-    return json.loads(response.data)['access_token']
+def test_payload_encoding():
+    payload = {
+        "sub": "1234567890",
+        "name": "harsh",
+        "iat": 15123462346323
+    }
+    expected_payload = base64.urlsafe_b64encode(json.dumps(payload).encode('utf-8')).rstrip(b'=').decode('utf-8')
+    assert payload_encoded == expected_payload
 
-def test_user_registration(client):
-    # Test successful registration
-    response = client.post('/register', json={'username': 'newuser', 'password': 'newpassword'})
-    assert response.status_code == 201
-    assert b'User created successfully' in response.data
+def test_signature():
+    secret = 'your-256-bit-secret'
+    signature_input = f"{header_encoded}.{payload_encoded}".encode('utf-8')
+    expected_signature = hmac.new(secret.encode('utf-8'), signature_input, hashlib.sha256).digest()
+    expected_signature_encoded = base64.urlsafe_b64encode(expected_signature).rstrip(b'=').decode('utf-8')
+    assert signature_encoded == expected_signature_encoded
 
-    # Test registration with an existing username
-    response = client.post('/register', json={'username': 'newuser', 'password': 'newpassword'})
-    assert response.status_code == 400
-    assert b'Username already taken' in response.data
-
-
-
-def test_user_login(client):
-    response = client.post('/login', json={'username': 'testuser', 'password': 'testpassword'})
-    assert response.status_code == 200
-    assert b'access_token' in response.data
-
-    response = client.post('/login', json={'username': 'testuser', 'password': 'wrongpassword'})
-    assert response.status_code == 400
-    assert b'Invalid credentials' in response.data
-
-def test_protected_resource(client, auth_token):
-    response = client.get('/protected', headers={'Authorization': f'Bearer {auth_token}'})
-    assert response.status_code == 200
-    assert b'Hello user' in response.data
-
-def test_protected_resource_without_token(client):
-    response = client.get('/protected')
-    assert response.status_code == 400
-    assert b'Missing Authorization Header' in response.data
+def test_jwt_structure():
+   
+    assert jwt == f"{header_encoded}.{payload_encoded}.{signature_encoded}"
